@@ -159,7 +159,7 @@
         .btn-next { background: var(--secondary-green); color: white; }
         .btn-finish { background: #d90429; color: white; border: 2px solid #b90422; box-shadow: 0 4px 0 #8d021f; }
         .btn-finish:active { transform: translateY(4px); box-shadow: none; }
-        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
 
         /* Login & Result */
         #login-screen, #result-screen {
@@ -176,6 +176,13 @@
         .legend { font-size: 0.9rem; margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; }
         .lg-i { display: flex; align-items: center; margin-bottom: 8px; }
         .lg-c { width: 15px; height: 15px; border-radius: 3px; margin-right: 10px; }
+        
+        #rank-display {
+            font-size: 2rem;
+            color: var(--review-bg);
+            font-weight: 800;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -208,8 +215,7 @@
 
     <section id="main-exam-area">
         <div class="question-card">
-            <div id="q-content">
-                </div>
+            <div id="q-content"></div>
 
             <div class="controls-row">
                 <div>
@@ -220,22 +226,23 @@
                     <button class="btn btn-next" onclick="nextQ()" style="margin-left:10px;">SAVE & NEXT</button>
                 </div>
                 <div>
-                    <button id="finish-btn" class="btn btn-finish" onclick="confirmSubmit()">FINISH & SUBMIT</button>
+                    <button id="finish-btn" class="btn btn-finish" onclick="confirmSubmit()" disabled>FINISH & SUBMIT</button>
                 </div>
             </div>
         </div>
     </section>
 </main>
 
-<div id="result-screen" style="display:none; flex-direction:column;">
+<div id="result-screen" style="display:none; flex-direction:column; align-items:center; text-align:center;">
     <h1 style="color:var(--secondary-green); margin-bottom:10px;">Test Completed Successfully!</h1>
     <p>Your Final Score:</p>
     <div id="final-score" style="font-size: 8rem; font-weight: 900; color: var(--primary-green);">0</div>
-    <button class="btn btn-next" onclick="location.reload()">GO TO HOME</button>
+    <div id="rank-display">Calculating Rank...</div>
+    <button class="btn btn-next" style="margin-top:20px" onclick="location.reload()">GO TO HOME</button>
 </div>
 
 <script>
-    const SCRIPT_URL = "YOUR_GOOGLE_SCRIPT_URL_HERE";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLpXnw4h32a6pzZJg290CiCn3OxVAKP0YuKI6z2YPJ9zXTMientzImrT2SvJJF31CD/exec";
     const students = { 901: "ARCHANA", 902: "AYUSH", 903: "AMRIT", 904: "ANIL", 905: "ARPITA", 906: "ASHOK", 907: "BHAWNA", 908: "DIPIKA", 909: "GAJRA", 910: "GAURAV J", 911: "GAURAV", 912: "GOVIND SUDHAR", 913: "HARISH", 914: "IMARTI", 915: "KAMLESH", 916: "KHUSHWANT", 917: "LAL CHAND", 918: "LEKHRAJ", 919: "MAMTA", 920: "LAXMI", 921: "MANISH", 922: "MANISHA", 923: "MEENAKSHI", 924: "MONIKA", 925: "NARPAT", 926: "PUJA", 927: "PRAKASH", 928: "PRAMILA", 929: "PUKHRAJ", 930: "RAVINDRA", 931: "ROSHAN", 932: "SANGEETA", 933: "SAPNA", 934: "SATYAPAL", 935: "SEEMA", 936: "SNEHA", 937: "SUMAN", 938: "SURESH", 939: "THAKRAM 1", 940: "WALARAM", 941: "VINOD", 1000: "SURESH JYANI" };
 
     const questionsData = [
@@ -375,6 +382,12 @@
             timeLeft--;
             let m = Math.floor(timeLeft/60), s = timeLeft%60;
             document.getElementById('timer').innerText = `${m}:${s<10?'0':''}${s}`;
+            
+            // 30 minute restriction (90 - 30 = 60 minutes remaining)
+            if(timeLeft <= 60 * 60) {
+                document.getElementById('finish-btn').disabled = false;
+            }
+            
             if(timeLeft <= 0) { clearInterval(timerInt); submitTest(); }
         }, 1000);
     }
@@ -385,17 +398,47 @@
         }
     }
 
-    function submitTest() {
+    async function submitTest() {
         saveResponse();
         let score = 0;
         shuffledQ.forEach((q, i) => { if(responses[i] === q.ans) score++; });
         
-        // Data Submission to Google Sheets
-        fetch(SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({...user, score}) });
+        const attempted = Object.keys(responses).length;
+        const finalData = {
+            name: user.name,
+            roll: user.roll,
+            score: score,
+            attempted: attempted,
+            timestamp: new Date().toLocaleString()
+        };
 
+        // UI Change
         document.getElementById('test-container').style.display = 'none';
         document.getElementById('result-screen').style.display = 'flex';
         document.getElementById('final-score').innerText = score + "/50";
+
+        // Data Submission and Rank Fetching
+        try {
+            // POST data to Sheet
+            await fetch(SCRIPT_URL, { 
+                method: 'POST', 
+                mode: 'no-cors', 
+                body: JSON.stringify(finalData) 
+            });
+
+            // GET scores to calculate Rank
+            const response = await fetch(SCRIPT_URL);
+            const allScores = await response.json();
+            
+            // Calculate Rank
+            allScores.push(score);
+            allScores.sort((a, b) => b - a);
+            const rank = allScores.indexOf(score) + 1;
+            document.getElementById('rank-display').innerText = "Current Rank: #" + rank;
+            
+        } catch(e) {
+            document.getElementById('rank-display').innerText = "Score Saved to Sheet!";
+        }
     }
 </script>
 </body>
